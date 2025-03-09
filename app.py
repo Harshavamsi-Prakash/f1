@@ -242,23 +242,35 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# Sidebar for model and parameter details
-st.sidebar.title("Model and Parameter Details")
+# Sidebar - Project Overview
+st.sidebar.title("Project Overview")
 st.sidebar.markdown("""
-    **Models Used:**
-    - **Random Forest**: Ensemble of decision trees for robust predictions.
-    - **Gradient Boosting**: Sequential building of trees to minimize errors.
-    - **AdaBoost**: Adaptive boosting to improve weak learners.
-    - **Support Vector Machine**: Kernel-based model for non-linear regression.
-    - **Neural Network**: Multi-layer perceptron for complex pattern recognition.
+This app predicts wind speed for the next 12 to 48 hours using AI models trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
 
-    **Parameters:**
-    - **Number of Estimators**: 100 (for ensemble models).
-    - **Random State**: 42 (for reproducibility).
-    - **Hidden Layers**: (100, 50) for Neural Network.
-    - **Kernel**: RBF for Support Vector Machine.
-    - **Max Iterations**: 1000 for Neural Network.
+### AI Models Used:
+- **Random Forest**: Ensemble of decision trees for robust predictions.
+- **Gradient Boosting**: Sequential learning to minimize errors.
+- **AdaBoost**: Adaptive boosting to improve weak learners.
+- **Support Vector Machine**: Kernel-based regression for non-linear data.
+- **Neural Network**: Multi-layer perceptron for complex pattern recognition.
+
+### How It Works:
+1. **Enter a city name** → Fetches latitude & longitude.
+2. **Fetch weather data** → Uses Open-Meteo API.
+3. **Train AI models** → Predicts wind speed trends.
+4. **Visualize & compare** → Interactive charts show model performance.
+5. **Download results** → Export predictions for further analysis.
+
+### Applications:
+- **Renewable Energy**: Optimizes wind turbine efficiency.
+- **Aviation & Maritime**: Ensures safer flights and shipping.
+- **Disaster Management**: Provides early warnings for storms.
+- **Agriculture & Environment**: Helps in crop and infrastructure protection.
+- **Outdoor Planning**: Supports scheduling based on wind conditions.
+
+Select models and compare their performance to find the best predictor.
 """)
+
 
 # User Inputs
 city_name = st.text_input("Enter City Name")
