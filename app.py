@@ -241,8 +241,7 @@ st.title("Wind Speed Prediction Using AI Models")
 st.markdown("""
     <div style="background-color: #e6f3ff; padding: 10px; border-radius: 5px;">
         <p style="color: #004080; font-size: 16px;">
-            This application predicts wind speed using real-time weather data and advanced AI models. 
-            Users can select multiple AI models to compare predictions and visualize the results.
+            This application predicts wind speed using real-time weather data and advanced AI models, providing accurate forecasts for 12 to 48 hours. Users can compare multiple machine learning models and analyze trends through interactive visualizations. By leveraging key meteorological factors like temperature, humidity, and pressure, the system enhances prediction accuracy. Ideal for weather forecasting, energy management, and outdoor planning, this AI-driven tool ensures reliable wind speed insights.
         </p>
     </div>
     """, unsafe_allow_html=True)
