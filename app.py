@@ -59,8 +59,7 @@
 
 #     model.fit(X_train, y_train)
 #     y_pred = model.predict(X_test)
-#     mse = mean_squared_error(y_test, y_pred)
-#     return model, mse
+#     return model
 
 # # Streamlit UI
 # st.set_page_config(page_title="Wind Speed Prediction", layout="wide")
@@ -101,7 +100,6 @@
 
 # Select models and compare their performance to find the best predictor.
 # """)
-
 
 # # User Inputs
 # city_name = st.text_input("Enter City Name")
@@ -144,11 +142,11 @@
 #             # Train-test split
 #             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-#             # Train and evaluate models
+#             # Train models
 #             results = []
 #             for model_type in model_types:
-#                 model, mse = train_model(X_train, y_train, X_test, y_test, model_type)
-#                 results.append((model_type, model, mse))
+#                 model = train_model(X_train, y_train, X_test, y_test, model_type)
+#                 results.append((model_type, model))
 
 #             # Predict wind speed for the next `forecast_duration` hours
 #             future_data = pd.DataFrame({
@@ -162,10 +160,10 @@
 #             # Visualize predicted wind speed
 #             st.subheader("Predicted Wind Speed Over Time")
 #             fig = go.Figure()
-#             for model_type, model, mse in results:
+#             for model_type, model in results:
 #                 predicted_wind_speed = model.predict(future_data)
 #                 df[f"Predicted Wind Speed (m/s) - {model_type}"] = predicted_wind_speed
-#                 fig.add_trace(go.Scatter(x=df["Time"], y=df[f"Predicted Wind Speed (m/s) - {model_type}"], mode="lines+markers", name=f"{model_type} (MSE: {mse:.2f})"))
+#                 fig.add_trace(go.Scatter(x=df["Time"], y=df[f"Predicted Wind Speed (m/s) - {model_type}"], mode="lines+markers", name=f"{model_type}"))
 
 #             fig.update_layout(
 #                 title="Predicted Wind Speed (m/s)",
@@ -176,20 +174,26 @@
 #             )
 #             st.plotly_chart(fig, use_container_width=True)
 
-#             # Additional Visualizations
-#             st.subheader("Comparison of Predicted Wind Speeds")
-#             fig2 = px.line(df, x="Time", y=[f"Predicted Wind Speed (m/s) - {model_type}" for model_type in model_types], title="Line Chart of Predicted Wind Speeds")
+#             # Bar Chart of Predicted Wind Speeds
+#             st.subheader("Bar Chart of Predicted Wind Speeds")
+#             fig2 = px.bar(df, x="Time", y=[f"Predicted Wind Speed (m/s) - {model_type}" for model_type in model_types], title="Bar Chart of Predicted Wind Speeds")
 #             st.plotly_chart(fig2, use_container_width=True)
 
-#             st.subheader("Bar Chart of Predicted Wind Speeds")
-#             fig3 = px.bar(df, x="Time", y=[f"Predicted Wind Speed (m/s) - {model_type}" for model_type in model_types], title="Bar Chart of Predicted Wind Speeds")
-#             st.plotly_chart(fig3, use_container_width=True)
-
-#             # New Visualization: Heatmap for Correlation
+#             # Correlation Heatmap of Weather Parameters
 #             st.subheader("Correlation Heatmap of Weather Parameters")
 #             correlation_matrix = weather_df.corr()
-#             fig4 = px.imshow(correlation_matrix, text_auto=True, title="Correlation Heatmap")
+#             fig3 = px.imshow(correlation_matrix, text_auto=True, title="Correlation Heatmap")
+#             st.plotly_chart(fig3, use_container_width=True)
+
+#             # New Chart 1: Scatter Plot of Wind Speed vs Temperature
+#             st.subheader("Wind Speed vs Temperature")
+#             fig4 = px.scatter(weather_df, x="temperature", y="wind_speed", trendline="ols", title="Wind Speed vs Temperature")
 #             st.plotly_chart(fig4, use_container_width=True)
+
+#             # New Chart 2: 3D Scatter Plot of Wind Speed, Humidity, and Pressure
+#             st.subheader("3D Scatter Plot: Wind Speed, Humidity, and Pressure")
+#             fig5 = px.scatter_3d(weather_df, x="humidity", y="pressure", z="wind_speed", color="wind_speed", title="3D Scatter Plot: Wind Speed, Humidity, and Pressure")
+#             st.plotly_chart(fig5, use_container_width=True)
 
 #             # Display dataset
 #             st.subheader("Dataset Used for Prediction")
@@ -200,9 +204,7 @@
 #                 file_name="wind_speed_prediction_data.csv",
 #                 mime="text/csv"
 #             )
-
-
-
+#-------------------------------------------------------------------------------------------------
 import streamlit as st
 import requests
 import pandas as pd
@@ -210,11 +212,11 @@ import numpy as np
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, AdaBoostRegressor
-from sklearn.svm import SVR
-from sklearn.neural_network import MLPRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 import joblib
 
@@ -222,7 +224,7 @@ import joblib
 def get_coordinates(city_name):
     url = f"https://nominatim.openstreetmap.org/search?q={city_name}&format=json&limit=1"
     headers = {
-        "User-Agent": "WindSpeedPredictor/1.0"  # Updated app name
+        "User-Agent": "WindSpeedPredictor/1.0"
     }
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
@@ -250,21 +252,27 @@ def get_weather_data(lat, lon, hours):
 # Function to train and evaluate a model
 def train_model(X_train, y_train, X_test, y_test, model_type="Random Forest"):
     if model_type == "Random Forest":
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model = RandomForestRegressor(n_estimators=200, random_state=42)
     elif model_type == "Gradient Boosting":
-        model = GradientBoostingRegressor(n_estimators=100, random_state=42)
-    elif model_type == "AdaBoost":
-        model = AdaBoostRegressor(n_estimators=100, random_state=42)
-    elif model_type == "Support Vector Machine":
-        model = SVR(kernel='rbf')
-    elif model_type == "Neural Network":
-        model = MLPRegressor(hidden_layer_sizes=(100, 50), max_iter=1000, random_state=42)
+        model = GradientBoostingRegressor(n_estimators=200, random_state=42)
+    elif model_type == "XGBoost":
+        model = XGBRegressor(n_estimators=200, random_state=42)
+    elif model_type == "LightGBM":
+        model = LGBMRegressor(n_estimators=200, random_state=42)
     else:
         raise ValueError("Invalid model type")
 
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    return model
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Train model
+    model.fit(X_train_scaled, y_train)
+    y_pred = model.predict(X_test_scaled)
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    return model, mse, r2
 
 # Streamlit UI
 st.set_page_config(page_title="Wind Speed Prediction", layout="wide")
@@ -285,9 +293,8 @@ This app predicts wind speed for the next 12 to 48 hours using AI models trained
 ### AI Models Used:
 - **Random Forest**: Ensemble of decision trees for robust predictions.
 - **Gradient Boosting**: Sequential learning to minimize errors.
-- **AdaBoost**: Adaptive boosting to improve weak learners.
-- **Support Vector Machine**: Kernel-based regression for non-linear data.
-- **Neural Network**: Multi-layer perceptron for complex pattern recognition.
+- **XGBoost**: Optimized gradient boosting for high performance.
+- **LightGBM**: Lightweight and fast gradient boosting.
 
 ### How It Works:
 1. **Enter a city name** → Fetches latitude & longitude.
@@ -308,7 +315,7 @@ Select models and compare their performance to find the best predictor.
 
 # User Inputs
 city_name = st.text_input("Enter City Name")
-model_types = st.multiselect("Select AI Models", options=["Random Forest", "Gradient Boosting", "AdaBoost", "Support Vector Machine", "Neural Network"])
+model_types = st.multiselect("Select AI Models", options=["Random Forest", "Gradient Boosting", "XGBoost", "LightGBM"])
 forecast_duration = st.slider("Select Forecast Duration (Hours)", min_value=12, max_value=48, value=24, step=12)
 
 if st.button("Get Wind Speed and Weather Data"):
@@ -350,8 +357,17 @@ if st.button("Get Wind Speed and Weather Data"):
             # Train models
             results = []
             for model_type in model_types:
-                model = train_model(X_train, y_train, X_test, y_test, model_type)
-                results.append((model_type, model))
+                model, mse, r2 = train_model(X_train, y_train, X_test, y_test, model_type)
+                results.append((model_type, model, mse, r2))
+
+            # Display model performance
+            st.subheader("Model Performance")
+            performance_df = pd.DataFrame({
+                "Model": [result[0] for result in results],
+                "Mean Squared Error": [result[2] for result in results],
+                "R2 Score": [result[3] for result in results]
+            })
+            st.write(performance_df)
 
             # Predict wind speed for the next `forecast_duration` hours
             future_data = pd.DataFrame({
@@ -365,7 +381,7 @@ if st.button("Get Wind Speed and Weather Data"):
             # Visualize predicted wind speed
             st.subheader("Predicted Wind Speed Over Time")
             fig = go.Figure()
-            for model_type, model in results:
+            for model_type, model, _, _ in results:
                 predicted_wind_speed = model.predict(future_data)
                 df[f"Predicted Wind Speed (m/s) - {model_type}"] = predicted_wind_speed
                 fig.add_trace(go.Scatter(x=df["Time"], y=df[f"Predicted Wind Speed (m/s) - {model_type}"], mode="lines+markers", name=f"{model_type}"))
@@ -379,33 +395,12 @@ if st.button("Get Wind Speed and Weather Data"):
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # Bar Chart of Predicted Wind Speeds
-            st.subheader("Bar Chart of Predicted Wind Speeds")
-            fig2 = px.bar(df, x="Time", y=[f"Predicted Wind Speed (m/s) - {model_type}" for model_type in model_types], title="Bar Chart of Predicted Wind Speeds")
-            st.plotly_chart(fig2, use_container_width=True)
-
-            # Correlation Heatmap of Weather Parameters
-            st.subheader("Correlation Heatmap of Weather Parameters")
-            correlation_matrix = weather_df.corr()
-            fig3 = px.imshow(correlation_matrix, text_auto=True, title="Correlation Heatmap")
-            st.plotly_chart(fig3, use_container_width=True)
-
-            # New Chart 1: Scatter Plot of Wind Speed vs Temperature
-            st.subheader("Wind Speed vs Temperature")
-            fig4 = px.scatter(weather_df, x="temperature", y="wind_speed", trendline="ols", title="Wind Speed vs Temperature")
-            st.plotly_chart(fig4, use_container_width=True)
-
-            # New Chart 2: 3D Scatter Plot of Wind Speed, Humidity, and Pressure
-            st.subheader("3D Scatter Plot: Wind Speed, Humidity, and Pressure")
-            fig5 = px.scatter_3d(weather_df, x="humidity", y="pressure", z="wind_speed", color="wind_speed", title="3D Scatter Plot: Wind Speed, Humidity, and Pressure")
-            st.plotly_chart(fig5, use_container_width=True)
-
-            # Display dataset
+            # Display dataset with parameters
             st.subheader("Dataset Used for Prediction")
-            st.write(df)
+            st.write(weather_df)
             st.download_button(
                 label="Download Dataset as CSV",
-                data=df.to_csv(index=False).encode('utf-8'),
+                data=weather_df.to_csv(index=False).encode('utf-8'),
                 file_name="wind_speed_prediction_data.csv",
                 mime="text/csv"
             )
