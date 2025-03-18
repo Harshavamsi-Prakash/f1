@@ -378,20 +378,15 @@ import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.svm import SVR
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.pipeline import make_pipeline
-from sklearn.ensemble import StackingRegressor
-from xgboost import XGBRegressor
-from lightgbm import LGBMRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, GRU, Conv1D, MaxPooling1D, Flatten
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
 
 # OpenWeatherMap API Key
 API_KEY = "e0100edeedd99f5ae298581c486626a4"  # Replace with your actual API key
@@ -423,28 +418,60 @@ def get_weather_data(lat, lon):
         st.error(f"Failed to retrieve data for lat={lat}, lon={lon}: {response.status_code} - {response.text}")
         return None
 
+# Function to create and train LSTM model
+def create_lstm_model(input_shape):
+    model = Sequential([
+        LSTM(64, return_sequences=True, input_shape=input_shape),
+        LSTM(32, return_sequences=False),
+        Dense(16, activation='relu'),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+    return model
+
+# Function to create and train GRU model
+def create_gru_model(input_shape):
+    model = Sequential([
+        GRU(64, return_sequences=True, input_shape=input_shape),
+        GRU(32, return_sequences=False),
+        Dense(16, activation='relu'),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+    return model
+
+# Function to create and train 1D CNN model
+def create_cnn_model(input_shape):
+    model = Sequential([
+        Conv1D(64, kernel_size=3, activation='relu', input_shape=input_shape),
+        MaxPooling1D(pool_size=2),
+        Conv1D(32, kernel_size=3, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        Flatten(),
+        Dense(16, activation='relu'),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+    return model
+
 # Streamlit UI
 st.set_page_config(page_title="Wind Speed Prediction", layout="wide")
-st.title("Wind Speed Prediction Using AI Models")
+st.title("Wind Speed Prediction Using Deep Learning Models")
 
 # Sidebar - Project Overview
 st.sidebar.title("Project Overview")
 st.sidebar.markdown("""
-This app predicts wind speed for the next 12 to 48 hours using AI models trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
+This app predicts wind speed for the next 12 to 48 hours using advanced deep learning models trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
 
-### AI Models Used:
-- **Linear Regression**: Simple linear regression model.
-- **Random Forest Regressor**: Ensemble of decision trees for regression.
-- **Gradient Boosting Regressor**: Boosting technique for regression.
-- **Support Vector Regressor (SVR)**: Support vector machine for regression.
-- **K-Nearest Neighbors (KNN) Regressor**: K-nearest neighbors for regression.
-- **XGBoost Regressor**: Extreme Gradient Boosting for regression.
-- **LightGBM Regressor**: Light Gradient Boosting Machine for regression.
+### Deep Learning Models Used:
+- **LSTM (Long Short-Term Memory)**: Ideal for sequential data like time-series.
+- **GRU (Gated Recurrent Units)**: A lighter alternative to LSTM.
+- **1D CNN (Convolutional Neural Network)**: Effective for feature extraction in time-series data.
 
 ### How It Works:
 1. **Enter a city name** → Fetches latitude & longitude.
 2. **Fetch weather data** → Uses OpenWeatherMap API.
-3. **Train models on the fly** → Predicts wind speed trends.
+3. **Train deep learning models on the fly** → Predicts wind speed trends.
 4. **Visualize & compare** → Interactive charts show model performance.
 5. **Download results** → Export predictions for further analysis.
 """)
@@ -488,7 +515,7 @@ if st.button("Get Wind Speed and Weather Data"):
             col5.metric("Precipitation", f"{df['precipitation'][0]} mm")
             col6.metric("Cloud Cover", f"{df['cloud_cover'][0]}%")
 
-            # Prepare dataset for AI model
+            # Prepare dataset for deep learning models
             X = df.drop(columns=["Time", "wind_speed", "wind_direction"])
             y = df["wind_speed"]
 
@@ -496,27 +523,26 @@ if st.button("Get Wind Speed and Weather Data"):
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
 
-            # Split data into training and testing sets
-            X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+            # Reshape data for deep learning models
+            X_reshaped = X_scaled.reshape((X_scaled.shape[0], X_scaled.shape[1], 1))
 
-            # Initialize models with hyperparameter tuning
+            # Split data into training and testing sets
+            X_train, X_test, y_train, y_test = train_test_split(X_reshaped, y, test_size=0.2, random_state=42)
+
+            # Initialize deep learning models
             models = {
-                "Linear Regression": LinearRegression(),
-                "Random Forest Regressor": RandomForestRegressor(n_estimators=200, max_depth=20, random_state=42),
-                "Gradient Boosting Regressor": GradientBoostingRegressor(n_estimators=300, max_depth=10, learning_rate=0.1, random_state=42),
-                "Support Vector Regressor (SVR)": SVR(kernel='rbf', C=100, gamma='scale'),
-                "K-Nearest Neighbors (KNN) Regressor": KNeighborsRegressor(n_neighbors=10),
-                "XGBoost Regressor": XGBRegressor(n_estimators=300, max_depth=10, learning_rate=0.1, random_state=42),
-                "LightGBM Regressor": LGBMRegressor(n_estimators=300, max_depth=10, learning_rate=0.1, random_state=42)
+                "LSTM": create_lstm_model((X_train.shape[1], 1)),
+                "GRU": create_gru_model((X_train.shape[1], 1)),
+                "1D CNN": create_cnn_model((X_train.shape[1], 1))
             }
 
             # Train models and predict
             results = {}
             accuracies = {}
             for model_name, model in models.items():
-                model.fit(X_train, y_train)
+                early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+                history = model.fit(X_train, y_train, validation_split=0.2, epochs=50, batch_size=32, callbacks=[early_stopping], verbose=0)
                 y_pred = model.predict(X_test)
-                mse = mean_squared_error(y_test, y_pred)
                 r2 = r2_score(y_test, y_pred)
                 results[model_name] = y_pred
                 accuracies[model_name] = r2
@@ -530,7 +556,7 @@ if st.button("Get Wind Speed and Weather Data"):
             st.subheader("Predicted Wind Speed Over Time")
             fig = go.Figure()
             for model_name, predictions in results.items():
-                fig.add_trace(go.Scatter(x=np.arange(len(y_test)), y=predictions, mode="lines+markers", name=f"{model_name}"))
+                fig.add_trace(go.Scatter(x=np.arange(len(y_test)), y=predictions.flatten(), mode="lines+markers", name=f"{model_name}"))
 
             fig.update_layout(
                 title="Predicted Wind Speed (m/s)",
@@ -540,27 +566,6 @@ if st.button("Get Wind Speed and Weather Data"):
                 hovermode="x unified"
             )
             st.plotly_chart(fig, use_container_width=True)
-
-            # Bar Chart of Predicted Wind Speeds
-            st.subheader("Bar Chart of Predicted Wind Speeds")
-            fig2 = px.bar(pd.DataFrame(results), title="Bar Chart of Predicted Wind Speeds")
-            st.plotly_chart(fig2, use_container_width=True)
-
-            # Correlation Heatmap of Weather Parameters
-            st.subheader("Correlation Heatmap of Weather Parameters")
-            correlation_matrix = df.corr()
-            fig3 = px.imshow(correlation_matrix, text_auto=True, title="Correlation Heatmap")
-            st.plotly_chart(fig3, use_container_width=True)
-
-            # Scatter Plot of Wind Speed vs Temperature
-            st.subheader("Wind Speed vs Temperature")
-            fig4 = px.scatter(df, x="temperature", y="wind_speed", trendline="ols", title="Wind Speed vs Temperature")
-            st.plotly_chart(fig4, use_container_width=True)
-
-            # 3D Scatter Plot of Wind Speed, Humidity, and Pressure
-            st.subheader("3D Scatter Plot: Wind Speed, Humidity, and Pressure")
-            fig5 = px.scatter_3d(df, x="humidity", y="pressure", z="wind_speed", color="wind_speed", title="3D Scatter Plot: Wind Speed, Humidity, and Pressure")
-            st.plotly_chart(fig5, use_container_width=True)
 
             # Display dataset
             st.subheader("Dataset Used for Prediction")
