@@ -381,13 +381,17 @@ import numpy as np
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.svm import SVR
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.pipeline import make_pipeline
+from sklearn.ensemble import StackingRegressor
+from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
 
 # OpenWeatherMap API Key
 API_KEY = "e0100edeedd99f5ae298581c486626a4"  # Replace with your actual API key
@@ -434,6 +438,8 @@ This app predicts wind speed for the next 12 to 48 hours using AI models trained
 - **Gradient Boosting Regressor**: Boosting technique for regression.
 - **Support Vector Regressor (SVR)**: Support vector machine for regression.
 - **K-Nearest Neighbors (KNN) Regressor**: K-nearest neighbors for regression.
+- **XGBoost Regressor**: Extreme Gradient Boosting for regression.
+- **LightGBM Regressor**: Light Gradient Boosting Machine for regression.
 
 ### How It Works:
 1. **Enter a city name** → Fetches latitude & longitude.
@@ -469,6 +475,8 @@ if st.button("Get Wind Speed and Weather Data"):
             df['hour'] = df['Time'].dt.hour
             df['day'] = df['Time'].dt.day
             df['month'] = df['Time'].dt.month
+            df['wind_direction_sin'] = np.sin(df['wind_direction'] * (np.pi / 180))
+            df['wind_direction_cos'] = np.cos(df['wind_direction'] * (np.pi / 180))
 
             # Display current weather data in a summary
             st.subheader("Current Weather Summary")
@@ -481,7 +489,7 @@ if st.button("Get Wind Speed and Weather Data"):
             col6.metric("Cloud Cover", f"{df['cloud_cover'][0]}%")
 
             # Prepare dataset for AI model
-            X = df.drop(columns=["Time", "wind_speed"])
+            X = df.drop(columns=["Time", "wind_speed", "wind_direction"])
             y = df["wind_speed"]
 
             # Standardize features
@@ -491,13 +499,15 @@ if st.button("Get Wind Speed and Weather Data"):
             # Split data into training and testing sets
             X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
-            # Initialize models
+            # Initialize models with hyperparameter tuning
             models = {
                 "Linear Regression": LinearRegression(),
-                "Random Forest Regressor": RandomForestRegressor(n_estimators=200, max_depth=10, random_state=42),
-                "Gradient Boosting Regressor": GradientBoostingRegressor(n_estimators=200, max_depth=5, random_state=42),
-                "Support Vector Regressor (SVR)": SVR(kernel='rbf', C=10, gamma='scale'),
-                "K-Nearest Neighbors (KNN) Regressor": KNeighborsRegressor(n_neighbors=5)
+                "Random Forest Regressor": RandomForestRegressor(n_estimators=200, max_depth=20, random_state=42),
+                "Gradient Boosting Regressor": GradientBoostingRegressor(n_estimators=300, max_depth=10, learning_rate=0.1, random_state=42),
+                "Support Vector Regressor (SVR)": SVR(kernel='rbf', C=100, gamma='scale'),
+                "K-Nearest Neighbors (KNN) Regressor": KNeighborsRegressor(n_neighbors=10),
+                "XGBoost Regressor": XGBRegressor(n_estimators=300, max_depth=10, learning_rate=0.1, random_state=42),
+                "LightGBM Regressor": LGBMRegressor(n_estimators=300, max_depth=10, learning_rate=0.1, random_state=42)
             }
 
             # Train models and predict
@@ -520,7 +530,7 @@ if st.button("Get Wind Speed and Weather Data"):
             st.subheader("Predicted Wind Speed Over Time")
             fig = go.Figure()
             for model_name, predictions in results.items():
-                fig.add_trace(go.Scatter(x=X_test.index, y=predictions, mode="lines+markers", name=f"{model_name}"))
+                fig.add_trace(go.Scatter(x=np.arange(len(y_test)), y=predictions, mode="lines+markers", name=f"{model_name}"))
 
             fig.update_layout(
                 title="Predicted Wind Speed (m/s)",
