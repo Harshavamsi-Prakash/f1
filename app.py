@@ -381,13 +381,13 @@ import numpy as np
 from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, GRU, Conv1D, MaxPooling1D, Flatten
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
 # OpenWeatherMap API Key
 API_KEY = "e0100edeedd99f5ae298581c486626a4"  # Replace with your actual API key
@@ -419,60 +419,35 @@ def get_weather_data(lat, lon):
         st.error(f"Failed to retrieve data for lat={lat}, lon={lon}: {response.status_code} - {response.text}")
         return None
 
-# Function to create and train LSTM model
-def create_lstm_model(input_shape):
+# Function to create and train an advanced LSTM model
+def create_advanced_lstm_model(input_shape):
     model = Sequential([
-        LSTM(64, return_sequences=True, input_shape=input_shape),
-        LSTM(32, return_sequences=False),
-        Dense(16, activation='relu'),
+        Bidirectional(LSTM(256, return_sequences=True, input_shape=input_shape)),
+        Dropout(0.3),
+        Bidirectional(LSTM(128, return_sequences=True)),
+        Dropout(0.3),
+        Bidirectional(LSTM(64, return_sequences=False)),
+        Dropout(0.2),
+        Dense(64, activation='relu'),
+        Dense(32, activation='relu'),
         Dense(1)
     ])
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
-    return model
-
-# Function to create and train GRU model
-def create_gru_model(input_shape):
-    model = Sequential([
-        GRU(64, return_sequences=True, input_shape=input_shape),
-        GRU(32, return_sequences=False),
-        Dense(16, activation='relu'),
-        Dense(1)
-    ])
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
-    return model
-
-# Function to create and train 1D CNN model
-def create_cnn_model(input_shape):
-    model = Sequential([
-        Conv1D(64, kernel_size=3, activation='relu', input_shape=input_shape),
-        MaxPooling1D(pool_size=2),
-        Conv1D(32, kernel_size=3, activation='relu'),
-        MaxPooling1D(pool_size=2),
-        Flatten(),
-        Dense(16, activation='relu'),
-        Dense(1)
-    ])
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+    model.compile(optimizer=Adam(learning_rate=0.0005), loss='mse', metrics=['mae'])
     return model
 
 # Streamlit UI
 st.set_page_config(page_title="Wind Speed Prediction", layout="wide")
-st.title("Wind Speed Prediction Using Deep Learning Models")
+st.title("Wind Speed Prediction Using Advanced LSTM Model")
 
 # Sidebar - Project Overview
 st.sidebar.title("Project Overview")
 st.sidebar.markdown("""
-This app predicts wind speed for the next 12 to 48 hours using advanced deep learning models trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
-
-### Deep Learning Models Used:
-- **LSTM (Long Short-Term Memory)**: Ideal for sequential data like time-series.
-- **GRU (Gated Recurrent Units)**: A lighter alternative to LSTM.
-- **1D CNN (Convolutional Neural Network)**: Effective for feature extraction in time-series data.
+This app predicts wind speed for the next 12 to 48 hours using an advanced **Bidirectional LSTM** model trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
 
 ### How It Works:
 1. **Enter a city name** → Fetches latitude & longitude.
 2. **Fetch weather data** → Uses OpenWeatherMap API.
-3. **Train deep learning models on the fly** → Predicts wind speed trends.
+3. **Train LSTM model on the fly** → Predicts wind speed trends.
 4. **Visualize & compare** → Interactive charts show model performance.
 5. **Download results** → Export predictions for further analysis.
 """)
@@ -524,43 +499,45 @@ if st.button("Get Wind Speed and Weather Data"):
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
 
-            # Reshape data for deep learning models
+            # Reshape data for LSTM
             X_reshaped = X_scaled.reshape((X_scaled.shape[0], X_scaled.shape[1], 1))
 
             # Split data into training and testing sets
             X_train, X_test, y_train, y_test = train_test_split(X_reshaped, y, test_size=0.2, random_state=42)
 
-            # Initialize deep learning models
-            models = {
-                "LSTM": create_lstm_model((X_train.shape[1], 1)),
-                "GRU": create_gru_model((X_train.shape[1], 1)),
-                "1D CNN": create_cnn_model((X_train.shape[1], 1))
-            }
+            # Initialize and train advanced LSTM model
+            model = create_advanced_lstm_model((X_train.shape[1], 1))
+            early_stopping = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
+            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=10, min_lr=0.0001)
+            model_checkpoint = ModelCheckpoint("best_model.h5", monitor='val_loss', save_best_only=True, verbose=0)
+            history = model.fit(
+                X_train, y_train,
+                validation_split=0.2,
+                epochs=200,
+                batch_size=32,
+                callbacks=[early_stopping, reduce_lr, model_checkpoint],
+                verbose=0
+            )
 
-            # Train models and predict
-            results = {}
-            accuracies = {}
-            for model_name, model in models.items():
-                early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-                history = model.fit(X_train, y_train, validation_split=0.2, epochs=50, batch_size=32, callbacks=[early_stopping], verbose=0)
-                y_pred = model.predict(X_test)
-                r2 = r2_score(y_test, y_pred)
-                results[model_name] = y_pred
-                accuracies[model_name] = r2
+            # Predict and evaluate
+            y_pred = model.predict(X_test)
+            r2 = r2_score(y_test, y_pred)
+            mse = mean_squared_error(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
 
-            # Display accuracies
-            st.subheader("Model Accuracies")
-            accuracy_df = pd.DataFrame(list(accuracies.items()), columns=["Model", "R2 Score"])
-            st.write(accuracy_df)
+            # Display evaluation metrics
+            st.subheader("Model Performance")
+            st.write(f"R2 Score: **{r2:.4f}**")
+            st.write(f"Mean Squared Error (MSE): **{mse:.4f}**")
+            st.write(f"Mean Absolute Error (MAE): **{mae:.4f}**")
 
-            # Visualize predicted wind speed
-            st.subheader("Predicted Wind Speed Over Time")
+            # Visualize actual vs predicted wind speed
+            st.subheader("Predicted vs Actual Wind Speed")
             fig = go.Figure()
-            for model_name, predictions in results.items():
-                fig.add_trace(go.Scatter(x=np.arange(len(y_test)), y=predictions.flatten(), mode="lines+markers", name=f"{model_name}"))
-
+            fig.add_trace(go.Scatter(x=np.arange(len(y_test)), y=y_test, mode="lines+markers", name="Actual Wind Speed"))
+            fig.add_trace(go.Scatter(x=np.arange(len(y_test)), y=y_pred.flatten(), mode="lines+markers", name="Predicted Wind Speed"))
             fig.update_layout(
-                title="Predicted Wind Speed (m/s)",
+                title="Predicted vs Actual Wind Speed (m/s)",
                 xaxis_title="Time",
                 yaxis_title="Wind Speed (m/s)",
                 template="plotly_white",
