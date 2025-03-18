@@ -381,11 +381,11 @@ import numpy as np
 from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional, Conv1D, MaxPooling1D, Flatten
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
@@ -419,35 +419,35 @@ def get_weather_data(lat, lon):
         st.error(f"Failed to retrieve data for lat={lat}, lon={lon}: {response.status_code} - {response.text}")
         return None
 
-# Function to create and train an advanced LSTM model
-def create_advanced_lstm_model(input_shape):
+# Function to create and train an advanced hybrid CNN-LSTM model
+def create_hybrid_model(input_shape):
     model = Sequential([
-        Bidirectional(LSTM(256, return_sequences=True, input_shape=input_shape)),
+        Conv1D(128, kernel_size=3, activation='relu', input_shape=input_shape),
+        MaxPooling1D(pool_size=2),
+        Bidirectional(LSTM(256, return_sequences=True)),
+        Dropout(0.4),
+        Bidirectional(LSTM(128, return_sequences=False)),
         Dropout(0.3),
-        Bidirectional(LSTM(128, return_sequences=True)),
-        Dropout(0.3),
-        Bidirectional(LSTM(64, return_sequences=False)),
-        Dropout(0.2),
+        Dense(128, activation='relu'),
         Dense(64, activation='relu'),
-        Dense(32, activation='relu'),
         Dense(1)
     ])
-    model.compile(optimizer=Adam(learning_rate=0.0005), loss='mse', metrics=['mae'])
+    model.compile(optimizer=Adam(learning_rate=0.0001), loss='mse', metrics=['mae'])
     return model
 
 # Streamlit UI
 st.set_page_config(page_title="Wind Speed Prediction", layout="wide")
-st.title("Wind Speed Prediction Using Advanced LSTM Model")
+st.title("Wind Speed Prediction Using Advanced Hybrid CNN-LSTM Model")
 
 # Sidebar - Project Overview
 st.sidebar.title("Project Overview")
 st.sidebar.markdown("""
-This app predicts wind speed for the next 12 to 48 hours using an advanced **Bidirectional LSTM** model trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
+This app predicts wind speed for the next 12 to 48 hours using an advanced **Hybrid CNN-LSTM** model trained on real-time weather data. Key meteorological factors like temperature, humidity, pressure, precipitation, and cloud cover are used for accurate predictions.
 
 ### How It Works:
 1. **Enter a city name** → Fetches latitude & longitude.
 2. **Fetch weather data** → Uses OpenWeatherMap API.
-3. **Train LSTM model on the fly** → Predicts wind speed trends.
+3. **Train hybrid model on the fly** → Predicts wind speed trends.
 4. **Visualize & compare** → Interactive charts show model performance.
 5. **Download results** → Export predictions for further analysis.
 """)
@@ -499,21 +499,21 @@ if st.button("Get Wind Speed and Weather Data"):
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
 
-            # Reshape data for LSTM
+            # Reshape data for hybrid model
             X_reshaped = X_scaled.reshape((X_scaled.shape[0], X_scaled.shape[1], 1))
 
             # Split data into training and testing sets
             X_train, X_test, y_train, y_test = train_test_split(X_reshaped, y, test_size=0.2, random_state=42)
 
-            # Initialize and train advanced LSTM model
-            model = create_advanced_lstm_model((X_train.shape[1], 1))
-            early_stopping = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
-            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=10, min_lr=0.0001)
+            # Initialize and train hybrid CNN-LSTM model
+            model = create_hybrid_model((X_train.shape[1], 1))
+            early_stopping = EarlyStopping(monitor='val_loss', patience=25, restore_best_weights=True)
+            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=10, min_lr=0.00001)
             model_checkpoint = ModelCheckpoint("best_model.h5", monitor='val_loss', save_best_only=True, verbose=0)
             history = model.fit(
                 X_train, y_train,
                 validation_split=0.2,
-                epochs=200,
+                epochs=500,
                 batch_size=32,
                 callbacks=[early_stopping, reduce_lr, model_checkpoint],
                 verbose=0
